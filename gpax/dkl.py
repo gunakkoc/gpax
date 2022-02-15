@@ -123,21 +123,24 @@ def bnn(X: jnp.ndarray, params: Dict[str, jnp.ndarray]) -> jnp.ndarray:
     """Simple MLP for a single MCMC sample of weights and biases"""
     h1 = jnp.tanh(jnp.matmul(X, params["w1"]) + params["b1"])
     h2 = jnp.tanh(jnp.matmul(h1, params["w2"]) + params["b2"])
-    z = jnp.matmul(h2, params["w3"]) + params["b3"]
+    h3 = jnp.tanh(jnp.matmul(h2, params["w3"]) + params["b3"])
+    z = jnp.matmul(h3, params["w4"]) + params["b4"]
     return z
 
 
 def bnn_prior(input_dim: int, zdim: int = 2) -> Dict[str, jnp.array]:
     """Priors over weights and biases in the default Bayesian MLP"""
-    hdim = [64, 32]
+    hdim = [128, 64, 32]
 
     def _bnn_prior(task_dim: int):
         w1 = sample_weights("w1", input_dim, hdim[0], task_dim)
         b1 = sample_biases("b1", hdim[0], task_dim)
         w2 = sample_weights("w2", hdim[0], hdim[1], task_dim)
         b2 = sample_biases("b2", hdim[1], task_dim)
-        w3 = sample_weights("w3", hdim[1], zdim, task_dim)
-        b3 = sample_biases("b3", zdim, task_dim)
-        return {"w1": w1, "b1": b1, "w2": w2, "b2": b2, "w3": w3, "b3": b3}
+        w3 = sample_weights("w3", hdim[1], hdim[2], task_dim)
+        b3 = sample_biases("b3", hdim[2], task_dim)
+        w4 = sample_weights("w4", hdim[2], zdim, task_dim)
+        b4 = sample_biases("b4", zdim, task_dim)
+        return {"w1": w1, "b1": b1, "w2": w2, "b2": b2, "w3": w3, "b3": b3, "w4": w4, "b4": b4}
 
     return _bnn_prior
