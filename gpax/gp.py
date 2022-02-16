@@ -107,7 +107,7 @@ class ExactGP:
             num_warmup=num_warmup,
             num_samples=num_samples,
             num_chains=num_chains,
-            chain_method=chain_method
+            chain_method=chain_method,
             progress_bar=progress_bar,
             jit_model_args=False
         )
