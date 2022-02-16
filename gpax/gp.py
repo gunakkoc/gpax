@@ -81,7 +81,8 @@ class ExactGP:
 
     def fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
             num_warmup: int = 2000, num_samples: int = 2000, num_chains: int = 1,
-            progress_bar: bool = True, print_summary: bool = True) -> None:
+            chain_method='vectorized',  progress_bar: bool = True, print_summary: bool = True
+            ) -> None:
         """
         Run MCMC to infer the GP model parameters
 
@@ -106,6 +107,7 @@ class ExactGP:
             num_warmup=num_warmup,
             num_samples=num_samples,
             num_chains=num_chains,
+            chain_method=chain_method
             progress_bar=progress_bar,
             jit_model_args=False
         )
