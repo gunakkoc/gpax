@@ -11,11 +11,6 @@ from .gp import ExactGP
 from .kernels import get_kernel
 from .utils import split_in_batches
 
-if jax.__version__ < '0.2.26':
-    clear_cache = jax.interpreters.xla._xla_callable.cache_clear
-else:
-    clear_cache = jax._src.dispatch._xla_callable.cache_clear
-
 
 class vExactGP(ExactGP):
     """
