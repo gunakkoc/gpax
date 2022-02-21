@@ -58,7 +58,7 @@ class vExactGP(ExactGP):
             f_loc += self.mean_fn(*args).squeeze()
         # Compute kernels for each task in parallel
         k_args = (X, X, kernel_params, noise)
-        k = jax.jit(jax.vmap(get_kernel(self.kernel)))(*k_args)
+        k = jax.vmap(get_kernel(self.kernel))(*k_args)
         # Sample y according to the standard Gaussian process formula
         numpyro.sample(
             "y",
