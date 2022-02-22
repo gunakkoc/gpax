@@ -68,13 +68,14 @@ class vExactGP(ExactGP):
 
     def _get_mvn_posterior(self,
                            X_train: jnp.ndarray, y_train: jnp.ndarray,
-                           X_new: jnp.ndarray, params: Dict[str, jnp.ndarray]
+                           X_new: jnp.ndarray, params: Dict[str, jnp.ndarray],
+                           m_X: Optional[jnp.ndarray] = None,
+                           m_p: Optional[jnp.ndarray] = None,
                            ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         noise = params["noise"]
         y_residual = y_train
-        if self.mean_fn is not None:
-            args = [self.X_train, params] if self.mean_fn_prior else [self.X_train]
-            y_residual -= self.mean_fn(*args).squeeze()
+        if m_X is not None:
+            y_residual -= m_X
         # compute kernel matrices for train and test data
         k_pp = get_kernel(self.kernel)(X_new, X_new, params, noise)
         k_pX = get_kernel(self.kernel)(X_new, X_train, params, jitter=0.0)
@@ -83,9 +84,8 @@ class vExactGP(ExactGP):
         K_xx_inv = jnp.linalg.inv(k_XX)
         cov = k_pp - jnp.matmul(k_pX, jnp.matmul(K_xx_inv, jnp.transpose(k_pX)))
         mean = jnp.matmul(k_pX, jnp.matmul(K_xx_inv, y_residual))
-        if self.mean_fn is not None:
-            args = [X_new, params] if self.mean_fn_prior else [X_new]
-            mean += self.mean_fn(*args).squeeze()
+        if m_p is not None:
+            mean += m_p
         return mean, cov
 
     @partial(jit, static_argnames='self')
@@ -96,10 +96,18 @@ class vExactGP(ExactGP):
         Returns parameters (mean and cov) of multivariate normal posterior
         for a single sample of GP hyperparameters. Wrapper over self._get_mvn_posterior.
         """
-        params_unsqueezed = {
-            k: p[None] if p.ndim == 0 else p for (k, p) in params.items()
-        }
-        vmap_args = (self.X_train, self.y_train, X_new, params_unsqueezed)
+        if self.mean_fn is not None:  # Compute mean function for training and new data
+            get_args = lambda x: [x, params] if self.mean_fn_prior else [x]
+            m_X = self.mean_fn(*get_args(self.X_train)).squeeze()
+            m_p = self.mean_fn(*get_args(X_new)).squeeze()
+            params_unsqueezed = {   # ensure that all dimensions match for vmap to work
+                k: p[None].repeat(X_new.shape[0], axis=0) if p.ndim == 0 else p
+                for k, p in params.items()
+            }
+            vmap_args = (
+                self.X_train, self.y_train, X_new, params_unsqueezed, m_X, m_p)
+        else:
+            vmap_args = (self.X_train, self.y_train, X_new, params)
         mean, cov = jax.vmap(self._get_mvn_posterior)(*vmap_args)
         return mean, cov
 
