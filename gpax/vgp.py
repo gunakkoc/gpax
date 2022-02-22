@@ -66,6 +66,7 @@ class vExactGP(ExactGP):
             obs=y,
         )
 
+    @partial(jit, static_argnames='self')
     def _get_mvn_posterior(self,
                            X_train: jnp.ndarray, y_train: jnp.ndarray,
                            X_new: jnp.ndarray, params: Dict[str, jnp.ndarray],
@@ -88,7 +89,6 @@ class vExactGP(ExactGP):
             mean += m_p
         return mean, cov
 
-    @partial(jit, static_argnames='self')
     def get_mvn_posterior(self,
                           X_new: jnp.ndarray, params: Dict[str, jnp.ndarray]
                           ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -96,11 +96,11 @@ class vExactGP(ExactGP):
         Returns parameters (mean and cov) of multivariate normal posterior
         for a single sample of GP hyperparameters. Wrapper over self._get_mvn_posterior.
         """
-        if self.mean_fn is not None:  # Compute mean function for training and new data
+        if self.mean_fn is not None:  # Compute mean function for training data and new data
             get_args = lambda x: [x, params] if self.mean_fn_prior else [x]
             m_X = self.mean_fn(*get_args(self.X_train)).squeeze()
             m_p = self.mean_fn(*get_args(X_new)).squeeze()
-            params_unsqueezed = {   # ensure that all dimensions match for vmap to work
+            params_unsqueezed = {   # ensure all params has the same 'batch dimension' for vmap to work
                 k: p[None].repeat(X_new.shape[0], axis=0) if p.ndim == 0 else p
                 for k, p in params.items()
             }
