@@ -147,6 +147,7 @@ class vExactGP(ExactGP):
                 mean, sampled = mean[..., None], sampled[..., None]
             return mean, sampled
 
+        X_new = self._set_data(X_new)
         y_pred, y_sampled = [], []
         for Xi in split_in_batches(X_new, batch_size, dim=1):
             mean, sampled = predict_batch(Xi)
