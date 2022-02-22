@@ -7,7 +7,7 @@ import numpyro
 import numpyro.distributions as dist
 from jax import jit
 
-from .gp import vExactGP
+from .vgp import vExactGP
 from .kernels import get_kernel
 
 
