@@ -73,19 +73,9 @@ class viDKL(ExactGP):
         )
 
     def single_fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
-            num_steps: int = 1000, step_size: float = 5e-3,
-            print_summary: bool = True, progress_bar=True) -> None:
-        """
-        Run SVI to infer a DKL model parameters
+                   num_steps: int = 1000, step_size: float = 5e-3,
+                   print_summary: bool = True, progress_bar=True) -> None:
 
-        Args:
-            rng_key: random number generator key
-            X: 2D 'feature vector' with :math:`n x num_features` dimensions
-            y: 1D 'target vector' with :math:`(n,)` dimensions
-            num_steps: number of SVI steps
-            step_size: step size schedule for Adam optimizer
-            print_summary: print summary at the end of sampling
-        """
         # Setup optimizer and SVI
         optim = numpyro.optim.Adam(step_size=step_size, b1=0.5)
         svi = SVI(
@@ -108,16 +98,26 @@ class viDKL(ExactGP):
     def fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
             num_steps: int = 1000, step_size: float = 5e-3,
             print_summary: bool = True, progress_bar=True):
+        """
+        Run SVI to infer a DKL model parameters
 
+        Args:
+            rng_key: random number generator key
+            X: 2D 'feature vector' with :math:`n x num_features` dimensions
+            y: 1D 'target vector' with :math:`(n,)` dimensions
+            num_steps: number of SVI steps
+            step_size: step size schedule for Adam optimizer
+            print_summary: print summary at the end of sampling
+            progress_bar: show progress bar (works only for scalar outputs)
+        """
         def _single_fit(x_i, y_i):
             return self.single_fit(
                 rng_key, x_i, y_i, num_steps, step_size,
                 print_summary=False, progress_bar=False)
 
-        X = X if X.ndim > 1 else X[:, None]  # relace with self._set_data
         self.X_train = X
         self.y_train = y
- 
+
         if X.ndim == 3:
             self.nn_params, self.kernel_params, self.loss = jax.vmap(_single_fit)(X, y)
             if progress_bar:
@@ -145,7 +145,7 @@ class viDKL(ExactGP):
         (mean and cov, where cov.diagonal() is 'uncertainty')
         given a single set of DKL hyperparameters
         """
-        
+
         noise = k_params["noise"]
         # embed data into the latent space
         z_train = self.nn_module.apply(
@@ -167,17 +167,17 @@ class viDKL(ExactGP):
                 *args) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Make prediction at X_new points using learned GP hyperparameters
-        
+
         Args:
             rng_key: random number generator key
             X_new: 2D vector with new/'test' data of :math:`n x num_features` dimensionality
             nn_params: neural network weigths (optional)
             kernel_params: kernel posterior parameters (optional)
-        
+
         Returns:
             Center of the mass of sampled means and all the sampled predictions
         """
-        
+
         def single_predict(x_train_i, y_train_i, x_new_i, nnpar_i, kpar_i):
             mean, cov = self.get_mvn_posterior(
                 x_train_i, y_train_i, x_new_i, nnpar_i, kpar_i)
@@ -191,7 +191,7 @@ class viDKL(ExactGP):
 
         vmap_args = (self.X_train, self.y_train, X_new, nn_params, k_params)
         mean, var = jax.vmap(single_predict)(*vmap_args)
-        
+
         return mean, var
 
     def _print_summary(self) -> None:
@@ -217,7 +217,7 @@ class viDKL(ExactGP):
 class MLP(hk.Module):
     def __init__(self, embedim=2):
         super().__init__()
-        self._embedim = embedim   
+        self._embedim = embedim
 
     def __call__(self, x):
         x = hk.Linear(64)(x)
