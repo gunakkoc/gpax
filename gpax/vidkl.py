@@ -72,11 +72,11 @@ class viDKL(ExactGP):
             obs=y,
         )
 
-    def fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
+    def single_fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
             num_steps: int = 1000, step_size: float = 5e-3,
             print_summary: bool = True, progress_bar=True) -> None:
         """
-        Run SVI to infer the GP model parameters
+        Run SVI to infer a DKL model parameters
 
         Args:
             rng_key: random number generator key
@@ -86,9 +86,6 @@ class viDKL(ExactGP):
             step_size: step size schedule for Adam optimizer
             print_summary: print summary at the end of sampling
         """
-        X = X if X.ndim > 1 else X[:, None]
-        self.X_train = X
-        self.y_train = y
         # Setup optimizer and SVI
         optim = numpyro.optim.Adam(step_size=step_size, b1=0.5)
         svi = SVI(
@@ -99,68 +96,116 @@ class viDKL(ExactGP):
             X=X,
             y=y,
         )
-        params = svi.run(rng_key, num_steps, progress_bar=progress_bar)[0]
+        params, _, losses = svi.run(rng_key, num_steps, progress_bar=progress_bar)
         # Get NN weights
-        self.nn_params = params["feature_extractor$params"]
+        nn_params = params["feature_extractor$params"]
         # Get kernel parameters from the guide
-        self.kernel_params = svi.guide.median(params)
+        kernel_params = svi.guide.median(params)
         if print_summary:
             self._print_summary()
+        return nn_params, kernel_params, losses
+
+    def fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
+            num_steps: int = 1000, step_size: float = 5e-3,
+            print_summary: bool = True, progress_bar=True):
+
+        def _single_fit(x_i, y_i):
+            return self.single_fit(
+                rng_key, x_i, y_i, num_steps, step_size,
+                print_summary=False, progress_bar=False)
+
+        X = X if X.ndim > 1 else X[:, None]  # relace with self._set_data
+        self.X_train = X
+        self.y_train = y
+ 
+        if X.ndim == 3:
+            self.nn_params, self.kernel_params, self.loss = jax.vmap(_single_fit)(X, y)
+            if progress_bar:
+                avg_bw = [num_steps - num_steps // 20, num_steps]
+                print("init loss: {}, final loss (avg) [{}-{}]: {} ".format(
+                    self.loss[0].mean(), avg_bw[0], avg_bw[1],
+                    self.loss.mean(0)[avg_bw[0]:avg_bw[1]].mean().round(4)))
+            if print_summary:
+                self._print_summary()
+        else:
+            self.nn_params, self.kernel_params, self.loss = self.single_fit(
+                rng_key, X, y, num_steps, step_size, print_summary, progress_bar
+            )
 
     @partial(jit, static_argnames='self')
     def get_mvn_posterior(self,
+                          X_train: jnp.ndarray,
+                          y_train: jnp.ndarray,
                           X_new: jnp.ndarray,
-                          params: Dict[str, jnp.ndarray] = None
+                          nn_params: Dict[str, jnp.ndarray],
+                          k_params: Dict[str, jnp.ndarray],
                           ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Returns predictive mean and covariance at new points
         (mean and cov, where cov.diagonal() is 'uncertainty')
         given a single set of DKL hyperparameters
         """
-        if params is None:
-            params = self.kernel_params
-        noise = params["noise"]
+        
+        noise = k_params["noise"]
         # embed data into the latent space
         z_train = self.nn_module.apply(
-            self.nn_params, jax.random.PRNGKey(0), self.X_train)
+            nn_params, jax.random.PRNGKey(0), X_train)
         z_test = self.nn_module.apply(
-            self.nn_params, jax.random.PRNGKey(0), X_new)
+            nn_params, jax.random.PRNGKey(0), X_new)
         # compute kernel matrices for train and test data
-        k_pp = get_kernel(self.kernel)(z_test, z_test, params, noise)
-        k_pX = get_kernel(self.kernel)(z_test, z_train, params, jitter=0.0)
-        k_XX = get_kernel(self.kernel)(z_train, z_train, params, noise)
+        k_pp = get_kernel(self.kernel)(z_test, z_test, k_params, noise)
+        k_pX = get_kernel(self.kernel)(z_test, z_train, k_params, jitter=0.0)
+        k_XX = get_kernel(self.kernel)(z_train, z_train, k_params, noise)
         # compute the predictive covariance and mean
         K_xx_inv = jnp.linalg.inv(k_XX)
         cov = k_pp - jnp.matmul(k_pX, jnp.matmul(K_xx_inv, jnp.transpose(k_pX)))
-        mean = jnp.matmul(k_pX, jnp.matmul(K_xx_inv, self.y_train))
+        mean = jnp.matmul(k_pX, jnp.matmul(K_xx_inv, y_train))
         return mean, cov
 
     def predict(self, rng_key: jnp.ndarray, X_new: jnp.ndarray,
-                kernel_params: Optional[Dict[str, jnp.ndarray]] = None,
-                n: int = 5000, *args
-                ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+                params: Optional[Tuple[Dict[str, jnp.ndarray]]] = None,
+                *args) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Make prediction at X_new points using learned GP hyperparameters
         
         Args:
             rng_key: random number generator key
             X_new: 2D vector with new/'test' data of :math:`n x num_features` dimensionality
-            samples: kernel posterior parameters (optional)
-            n: number of samples from the Multivariate Normal posterior
+            nn_params: neural network weigths (optional)
+            kernel_params: kernel posterior parameters (optional)
+        
         Returns:
             Center of the mass of sampled means and all the sampled predictions
         """
-        if kernel_params is None:
-            kernel_params = self.kernel_params
-        y_mean, y_sampled = self._predict(rng_key, X_new, kernel_params, n)
-        return y_mean, y_sampled
+        
+        def single_predict(x_train_i, y_train_i, x_new_i, nnpar_i, kpar_i):
+            mean, cov = self.get_mvn_posterior(
+                x_train_i, y_train_i, x_new_i, nnpar_i, kpar_i)
+            return mean, cov.diagonal()
+
+        if params is None:
+            nn_params = self.nn_params
+            k_params = self.kernel_params
+        else:
+            nn_params, k_params = params
+
+        vmap_args = (self.X_train, self.y_train, X_new, nn_params, k_params)
+        mean, var = jax.vmap(single_predict)(*vmap_args)
+        
+        return mean, var
 
     def _print_summary(self) -> None:
         if isinstance(self.kernel_params, dict):
             print('\nInferred parameters')
-            for (k, v) in self.kernel_params.items():
-                spaces = " " * (15 - len(k))
-                print(k, spaces, jnp.around(v, 4))
+            if self.X_train.ndim == 2:
+                for (k, vals) in self.kernel_params.items():
+                    spaces = " " * (15 - len(k))
+                    print(k, spaces, jnp.around(vals, 4))
+            else:
+                for (k, vals) in self.kernel_params.items():
+                    for i, v in enumerate(vals):
+                        spaces = " " * (15 - len(k))
+                        print(k+"[{}]".format(i), spaces, jnp.around(v, 4))
 
     @partial(jit, static_argnames='self')
     def embed(self, X_new: jnp.ndarray) -> jnp.ndarray:
