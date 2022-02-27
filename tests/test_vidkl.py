@@ -49,11 +49,7 @@ def test_get_mvn_posterior():
               "k_scale": jnp.array(1.0),
               "noise": jnp.array(0.1)}
     m = viDKL(X.shape[-1])
-    m.X_train = X
-    m.y_train = y
-    m.nn_params = nn_params
-    m.kernel_params = kernel_params
-    mean, cov = m.get_mvn_posterior(X_test)
+    mean, cov = m.get_mvn_posterior(X, y, X_test, nn_params, kernel_params)
     assert isinstance(mean, jnp.ndarray)
     assert isinstance(cov, jnp.ndarray)
     assert_equal(mean.shape, (X_test.shape[0],))
