@@ -70,8 +70,8 @@ def test_predict():
     m.y_train = y
     m.nn_params = nn_params
     m.kernel_params = kernel_params
-    y_mean, y_sampled = m.predict(rng_key, X_test, n=100)
-    assert isinstance(y_mean, jnp.ndarray)
-    assert isinstance(y_sampled, jnp.ndarray)
-    assert_equal(y_mean.shape, (len(X_test),))
-    assert_equal(y_sampled.shape, (100, len(X_test)))
+    mean, var = m.predict(rng_key, X_test)
+    assert isinstance(mean, jnp.ndarray)
+    assert isinstance(var, jnp.ndarray)
+    assert_equal(mean.shape, (len(X_test),))
+    assert_equal(var.shape, (len(X_test),))
