@@ -133,8 +133,7 @@ def get_distance(points: jnp.ndarray) -> float:
 def vi_mean_and_var(model: Type[viDKL], X: jnp.ndarray,
                     compute_std: bool = False
                     ) -> Tuple[jnp.ndarray]:
-    mean, cov = model.get_mvn_posterior(X)
-    var = cov.diagonal()
+    mean, var = model.predict(X)
     if compute_std:
         return mean, jnp.sqrt(var)
     return mean, var
