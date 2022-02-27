@@ -189,8 +189,11 @@ class viDKL(ExactGP):
         else:
             nn_params, k_params = params
 
-        vmap_args = (self.X_train, self.y_train, X_new, nn_params, k_params)
-        mean, var = jax.vmap(single_predict)(*vmap_args)
+        p_args = (self.X_train, self.y_train, X_new, nn_params, k_params)
+        if self.X_train.ndim == 3:
+            mean, var = jax.vmap(single_predict)(*p_args)
+        else:
+            mean, var = single_predict(*p_args)
 
         return mean, var
 
@@ -209,8 +212,14 @@ class viDKL(ExactGP):
 
     @partial(jit, static_argnames='self')
     def embed(self, X_new: jnp.ndarray) -> jnp.ndarray:
-        z = self.nn_module.apply(
-            self.nn_params, jax.random.PRNGKey(0), X_new)
+
+        def single_embed(nnpar_i, x_i):
+            return self.nn_module.apply(nnpar_i, jax.random.PRNGKey(0), x_i)
+
+        if self.X_train.ndim == 3:
+            z = jax.vmap(single_embed)(self.nn_params, X_new)
+        else:
+            z = single_embed(self.nn_params, X_new)
         return z
 
 
