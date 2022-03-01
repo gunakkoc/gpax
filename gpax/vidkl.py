@@ -125,7 +125,7 @@ class viDKL(ExactGP):
         self.X_train = X
         self.y_train = y
 
-        if X.ndim == 3:
+        if X.ndim == len(self.data_dim) + 2:
             self.nn_params, self.kernel_params, self.loss = jax.vmap(_single_fit)(X, y)
             if progress_bar:
                 avg_bw = [num_steps - num_steps // 20, num_steps]
@@ -137,7 +137,7 @@ class viDKL(ExactGP):
                 rng_key, X, y, num_steps, step_size, print_summary, progress_bar
             )
         if print_summary:
-                self._print_summary()
+            self._print_summary()
 
     @partial(jit, static_argnames='self')
     def get_mvn_posterior(self,
@@ -197,7 +197,7 @@ class viDKL(ExactGP):
             nn_params, k_params = params
 
         p_args = (self.X_train, self.y_train, X_new, nn_params, k_params)
-        if self.X_train.ndim == 3:
+        if self.X_train.ndim == len(self.data_dim) + 2:
             mean, var = jax.vmap(single_predict)(*p_args)
         else:
             mean, var = single_predict(*p_args)
@@ -207,7 +207,7 @@ class viDKL(ExactGP):
     def _print_summary(self) -> None:
         if isinstance(self.kernel_params, dict):
             print('\nInferred GP kernel parameters')
-            if self.X_train.ndim == 2:
+            if self.X_train.ndim == len(self.data_dim) + 1:
                 for (k, vals) in self.kernel_params.items():
                     spaces = " " * (15 - len(k))
                     print(k, spaces, jnp.around(vals, 4))
@@ -223,7 +223,7 @@ class viDKL(ExactGP):
         def single_embed(nnpar_i, x_i):
             return self.nn_module.apply(nnpar_i, jax.random.PRNGKey(0), x_i)
 
-        if self.X_train.ndim == 3:
+        if self.X_train.ndim == len(self.data_dim) + 2:
             z = jax.vmap(single_embed)(self.nn_params, X_new)
         else:
             z = single_embed(self.nn_params, X_new)
