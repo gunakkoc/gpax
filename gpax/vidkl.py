@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import SVI, Trace_ELBO
-from numpyro.infer.autoguide import AutoDelta
+from numpyro.infer.autoguide import AutoDelta, AutoNormal
 from numpyro.contrib.module import random_haiku_module
 from jax import jit
 import haiku as hk
@@ -26,19 +26,24 @@ class viDKL(ExactGP):
         kernel_prior: optional priors over kernel hyperparameters (uses LogNormal(0,1) by default)
         nn: Custom neural network (optional)
         latent_prior: Optional prior over the latent space (NN embedding)
+        guide: auto-guide option: 'delta' (default) or 'normal'
     """
 
     def __init__(self, input_dim: int, z_dim: int = 2, kernel: str = 'RBF',
                  kernel_prior: Optional[Callable[[], Dict[str, jnp.ndarray]]] = None,
                  nn: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None,
-                 latent_prior: Optional[Callable[[jnp.ndarray], Dict[str, jnp.ndarray]]] = None
+                 latent_prior: Optional[Callable[[jnp.ndarray], Dict[str, jnp.ndarray]]] = None,
+                 guide: str = 'delta'
                  ) -> None:
         super(viDKL, self).__init__(input_dim, kernel, kernel_prior)
+        if guide not in ['delta', 'normal']:
+            raise NotImplementedError("Select guide between 'delta' and 'normal'")
         nn_module = nn if nn else MLP
         self.nn_module = hk.transform(lambda x: nn_module(z_dim)(x))
         self.kernel_dim = z_dim
         self.data_dim = (input_dim,) if isinstance(input_dim, int) else input_dim
         self.latent_prior = latent_prior
+        self.guide_type = AutoNormal if guide == 'normal' else AutoDelta
         self.kernel_params = None
         self.nn_params = None
 
@@ -81,7 +86,7 @@ class viDKL(ExactGP):
         optim = numpyro.optim.Adam(step_size=step_size, b1=0.5)
         svi = SVI(
             self.model,
-            guide=AutoDelta(self.model),
+            guide=self.guide_type(self.model),
             optim=optim,
             loss=Trace_ELBO(),
             X=X,
