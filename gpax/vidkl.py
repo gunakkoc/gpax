@@ -7,13 +7,13 @@ import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.autoguide import AutoDelta
-from numpyro.contrib.module import haiku_module
+from numpyro.contrib.module import random_haiku_module
 from jax import jit
 import haiku as hk
 
 from .gp import ExactGP
 from .kernels import get_kernel
-
+from .utils import get_haiku_dict
 
 class viDKL(ExactGP):
     """
@@ -45,8 +45,9 @@ class viDKL(ExactGP):
     def model(self, X: jnp.ndarray, y: jnp.ndarray) -> None:
         """DKL probabilistic model"""
         # NN part
-        feature_extractor = haiku_module(
-            "feature_extractor", self.nn_module, input_shape=(1, *self.data_dim))
+        feature_extractor = random_haiku_module(
+            "feature_extractor", self.nn_module, input_shape=(1, *self.data_dim),
+            prior=(lambda name, shape: dist.Cauchy() if name.startswith("b") else dist.Normal()))
         z = feature_extractor(X)
         if self.latent_prior:  # Sample latent variable
             z = self.latent_prior(z)
@@ -87,10 +88,13 @@ class viDKL(ExactGP):
             y=y,
         )
         params, _, losses = svi.run(rng_key, num_steps, progress_bar=progress_bar)
+        # Get DKL parameters from the guide
+        params_map = svi.guide.median(params)
         # Get NN weights
-        nn_params = params["feature_extractor$params"]
-        # Get kernel parameters from the guide
-        kernel_params = svi.guide.median(params)
+        nn_params = get_haiku_dict(params_map)
+        # Get GP kernel hyperparmeters
+        kernel_params = {k: v for (k, v) in params_map.items()
+                         if not k.startswith("feature_extractor")}
         if print_summary:
             self._print_summary()
         return nn_params, kernel_params, losses
