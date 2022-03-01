@@ -95,8 +95,6 @@ class viDKL(ExactGP):
         # Get GP kernel hyperparmeters
         kernel_params = {k: v for (k, v) in params_map.items()
                          if not k.startswith("feature_extractor")}
-        if print_summary:
-            self._print_summary()
         return nn_params, kernel_params, losses
 
     def fit(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
@@ -129,12 +127,12 @@ class viDKL(ExactGP):
                 print("init loss: {}, final loss (avg) [{}-{}]: {} ".format(
                     self.loss[0].mean(), avg_bw[0], avg_bw[1],
                     self.loss.mean(0)[avg_bw[0]:avg_bw[1]].mean().round(4)))
-            if print_summary:
-                self._print_summary()
         else:
             self.nn_params, self.kernel_params, self.loss = self.single_fit(
                 rng_key, X, y, num_steps, step_size, print_summary, progress_bar
             )
+        if print_summary:
+                self._print_summary()
 
     @partial(jit, static_argnames='self')
     def get_mvn_posterior(self,
@@ -203,7 +201,7 @@ class viDKL(ExactGP):
 
     def _print_summary(self) -> None:
         if isinstance(self.kernel_params, dict):
-            print('\nInferred parameters')
+            print('\nInferred GP kernel parameters')
             if self.X_train.ndim == 2:
                 for (k, vals) in self.kernel_params.items():
                     spaces = " " * (15 - len(k))
