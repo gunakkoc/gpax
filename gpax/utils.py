@@ -39,7 +39,7 @@ def split_in_batches(X_new: Union[onp.ndarray, jnp.ndarray],
     return X_split
 
 
-def get_haiku_dict(kernel_params: Dict[str, jnp.ndarray]) -> Dict[str[Dict[str, jnp.ndarray]]]:
+def get_haiku_dict(kernel_params: Dict[str, jnp.ndarray]) -> Dict[str, Dict[str, jnp.ndarray]]:
     """
     Extracts weights and biases from viDKL dictionary into a separate
     dictionary compatible with haiku's .apply() method
