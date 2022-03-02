@@ -204,18 +204,39 @@ class viDKL(ExactGP):
 
         return mean, var
 
-    def _print_summary(self) -> None:
-        if isinstance(self.kernel_params, dict):
-            print('\nInferred GP kernel parameters')
-            if self.X_train.ndim == len(self.data_dim) + 1:
-                for (k, vals) in self.kernel_params.items():
-                    spaces = " " * (15 - len(k))
-                    print(k, spaces, jnp.around(vals, 4))
-            else:
-                for (k, vals) in self.kernel_params.items():
-                    for i, v in enumerate(vals):
-                        spaces = " " * (15 - len(k))
-                        print(k+"[{}]".format(i), spaces, jnp.around(v, 4))
+    def fit_predict(self, rng_key: jnp.array, X: jnp.ndarray, y: jnp.ndarray,
+                    X_new: jnp.ndarray, num_steps: int = 1000, step_size: float = 5e-3,
+                    n_models: int = 1, print_summary: bool = True, progress_bar=True
+                    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """
+        Run SVI to infer a DKL model(s) parameters and make a prediction with
+        trained model(s). Allows using an ensemble of models.
+
+        Args:
+            rng_key: random number generator key
+            X: Input high-dimensional features
+            y: Target output (scalar of vector)
+            X_new: New ('test') data
+            num_steps: number of SVI steps
+            step_size: step size schedule for Adam optimizer
+            print_summary: print summary at the end of sampling
+            progress_bar: show progress bar (works only for scalar outputs)
+        """
+
+        def single_fit_predict(key):
+            self.fit(key, X, y, num_steps, step_size,
+                    print_summary, progress_bar)
+            mean, var = self.predict(key, X_new)
+            return mean, var
+
+        keys = jax.random.split(rng_key, num=n_models)
+        if n_models > 1:
+            print_summary = progress_bar = 0
+            mean, var = jax.vmap(single_fit_predict)(keys)
+        else:
+            mean, var = single_fit_predict(keys[0])
+
+        return mean, var
 
     @partial(jit, static_argnames='self')
     def embed(self, X_new: jnp.ndarray) -> jnp.ndarray:
@@ -228,6 +249,19 @@ class viDKL(ExactGP):
         else:
             z = single_embed(self.nn_params, X_new)
         return z
+
+    def _print_summary(self) -> None:
+        if isinstance(self.kernel_params, dict):
+            print('\nInferred GP kernel parameters')
+            if self.X_train.ndim == len(self.data_dim) + 1:
+                for (k, vals) in self.kernel_params.items():
+                    spaces = " " * (15 - len(k))
+                    print(k, spaces, jnp.around(vals, 4))
+            else:
+                for (k, vals) in self.kernel_params.items():
+                    for i, v in enumerate(vals):
+                        spaces = " " * (15 - len(k))
+                        print(k+"[{}]".format(i), spaces, jnp.around(v, 4))
 
 
 class MLP(hk.Module):
