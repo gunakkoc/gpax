@@ -110,8 +110,8 @@ class viDKL(ExactGP):
 
         Args:
             rng_key: random number generator key
-            X: 2D 'feature vector' with :math:`n x num_features` dimensions
-            y: 1D 'target vector' with :math:`(n,)` dimensions
+            X: Input high-dimensional features
+            y: Target output (scalar of vector)
             num_steps: number of SVI steps
             step_size: step size schedule for Adam optimizer
             print_summary: print summary at the end of sampling
@@ -177,7 +177,7 @@ class viDKL(ExactGP):
 
         Args:
             rng_key: random number generator key
-            X_new: 2D vector with new/'test' data of :math:`n x num_features` dimensionality
+            X_new: New ('test') data
             nn_params: neural network weigths (optional)
             kernel_params: kernel posterior parameters (optional)
 
@@ -210,7 +210,7 @@ class viDKL(ExactGP):
                     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Run SVI to infer a DKL model(s) parameters and make a prediction with
-        trained model(s). Allows using an ensemble of models.
+        trained model(s) on new data. Allows using an ensemble of models.
 
         Args:
             rng_key: random number generator key
@@ -219,13 +219,14 @@ class viDKL(ExactGP):
             X_new: New ('test') data
             num_steps: number of SVI steps
             step_size: step size schedule for Adam optimizer
+            n_models: number of models in the ensemble (defaults to 1)
             print_summary: print summary at the end of sampling
             progress_bar: show progress bar (works only for scalar outputs)
         """
 
         def single_fit_predict(key):
             self.fit(key, X, y, num_steps, step_size,
-                    print_summary, progress_bar)
+                     print_summary, progress_bar)
             mean, var = self.predict(key, X_new)
             return mean, var
 
